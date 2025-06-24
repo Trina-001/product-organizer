@@ -32,7 +32,7 @@
             border-radius: 12px;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
             width: 100%;
-            max-width: 400px;
+            max-width: 500px;
             text-align: center;
             border: 1px solid #3a3a3a;
         }
@@ -137,6 +137,60 @@
             100% { transform: rotate(360deg); }
         }
         
+        .progress-container {
+            margin-top: 20px;
+            display: none;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: #3a3a3a;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background-color: #007bff;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .progress-text {
+            font-size: 0.9em;
+            color: #b0b0b0;
+            margin-bottom: 10px;
+        }
+        
+        .log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #1a1a1a;
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 10px;
+            text-align: left;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+            color: #ccc;
+            display: none;
+        }
+        
+        .log-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .log-container::-webkit-scrollbar-track {
+            background: #2c2c2c;
+        }
+        
+        .log-container::-webkit-scrollbar-thumb {
+            background: #007bff;
+            border-radius: 4px;
+        }
+        
         #completionMessage {
             margin-top: 20px;
             font-weight: bold;
@@ -146,35 +200,17 @@
             animation: fadeIn 0.5s ease-out;
         }
 
+        .error-message {
+            color: #dc3545 !important;
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
-        #progressBar {
-            width: 100%;
-            background-color: #3a3a3a;
-            border-radius: 5px;
-            margin: 10px 0;
-            display: none;
-        }
-
-        #progressBarFill {
-            height: 10px;
-            border-radius: 5px;
-            background-color: #007bff;
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-
-        #statusMessages {
-            max-height: 200px;
-            overflow-y: auto;
-            text-align: left;
-            margin-top: 15px;
-            padding: 10px;
-            background-color: #3a3a3a;
-            border-radius: 5px;
+        
+        .upload-progress {
+            margin-top: 10px;
             display: none;
         }
     </style>
@@ -184,151 +220,198 @@
     <h1 class="title">Product Listing Images Organizer</h1>
     
     <div class="container">
-        <form id="organizeForm">
-            <br>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <label>Select folder to organize:</label>
             <div class="file-input-wrapper">
                 <button type="button" class="file-input-button">
                     <i class="fas fa-folder-open"></i> Choose Folder
                 </button>
-                <input type="file" id="folderInput" webkitdirectory directory multiple>
+                <input type="file" id="folderInput" webkitdirectory directory multiple name="files">
             </div>
             <div id="selectedFolder"></div>
+            
+            <div class="upload-progress" id="uploadProgress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="uploadProgressFill"></div>
+                </div>
+                <div class="progress-text" id="uploadProgressText">Uploading files...</div>
+            </div>
+            
             <br>
-            <button type="submit" id="organizeButton">Organize</button>
+            <button type="submit" id="organizeButton" disabled>Upload & Organize</button>
         </form>
 
         <div class="loader" id="loader"></div>
-        <div id="progressBar">
-            <div id="progressBarFill"></div>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">Processing...</div>
+            <div class="log-container" id="logContainer"></div>
         </div>
-        <div id="statusMessages"></div>
+        
         <div id="completionMessage"></div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const organizeForm = document.getElementById('organizeForm');
+            const uploadForm = document.getElementById('uploadForm');
             const folderInput = document.getElementById('folderInput');
             const selectedFolderDisplay = document.getElementById('selectedFolder');
             const organizeButton = document.getElementById('organizeButton');
             const loader = document.getElementById('loader');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const logContainer = document.getElementById('logContainer');
             const completionMessage = document.getElementById('completionMessage');
-            const progressBar = document.getElementById('progressBar');
-            const progressBarFill = document.getElementById('progressBarFill');
-            const statusMessages = document.getElementById('statusMessages');
+            const uploadProgress = document.getElementById('uploadProgress');
+            const uploadProgressFill = document.getElementById('uploadProgressFill');
+            const uploadProgressText = document.getElementById('uploadProgressText');
 
-            let selectedFolderPath = '';
+            let selectedFiles = [];
+            let uploadedFolderPath = '';
 
             folderInput.addEventListener('change', function(event) {
-                if (event.target.files.length > 0) {
-                    const fullPath = event.target.files[0].webkitRelativePath;
-                    selectedFolderPath = fullPath.split('/')[0];
-                    
-                    selectedFolderDisplay.textContent = `Selected: ${selectedFolderPath}`;
+                selectedFiles = Array.from(event.target.files);
+                
+                if (selectedFiles.length > 0) {
+                    const folderName = selectedFiles[0].webkitRelativePath.split('/')[0];
+                    selectedFolderDisplay.textContent = `Selected: ${folderName} (${selectedFiles.length} files)`;
                     selectedFolderDisplay.style.display = 'block';
                     organizeButton.disabled = false;
                     
+                    // Hide previous results
                     completionMessage.style.display = 'none';
-                    statusMessages.style.display = 'none';
-                    statusMessages.innerHTML = '';
+                    progressContainer.style.display = 'none';
+                    uploadProgress.style.display = 'none';
                 }
             });
 
-            organizeForm.addEventListener('submit', async function(event) {
+            uploadForm.addEventListener('submit', async function(event) {
                 event.preventDefault();
 
-                if (!selectedFolderPath) {
+                if (selectedFiles.length === 0) {
                     alert('Please select a folder first.');
                     return;
                 }
 
-                // UI State: Processing
+                // Reset UI
                 organizeButton.disabled = true;
-                organizeButton.textContent = 'Organizing...';
-                loader.style.display = 'block';
-                progressBar.style.display = 'block';
-                statusMessages.style.display = 'block';
+                organizeButton.textContent = 'Uploading...';
                 completionMessage.style.display = 'none';
+                progressContainer.style.display = 'none';
+                uploadProgress.style.display = 'block';
 
                 try {
-                    // Start the organization process
-                    const response = await fetch('/organize', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                        },
-                        body: `folder_path=${encodeURIComponent(selectedFolderPath)}`
+                    // Upload files
+                    const formData = new FormData();
+                    selectedFiles.forEach(file => {
+                        formData.append('files', file);
                     });
 
-                    if (!response.ok) {
-                        throw new Error('Failed to start organization');
+                    const uploadResponse = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const uploadResult = await uploadResponse.json();
+
+                    if (uploadResult.status === 'error') {
+                        throw new Error(uploadResult.message);
+                    }
+
+                    uploadedFolderPath = uploadResult.upload_path;
+                    
+                    // Hide upload progress, show processing
+                    uploadProgress.style.display = 'none';
+                    progressContainer.style.display = 'block';
+                    organizeButton.textContent = 'Organizing...';
+
+                    // Start organization
+                    const organizeResponse = await fetch('/organize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            folder_path: uploadedFolderPath
+                        })
+                    });
+
+                    const organizeResult = await organizeResponse.json();
+
+                    if (organizeResult.status === 'error') {
+                        throw new Error(organizeResult.message);
                     }
 
                     // Poll for status updates
-                    const checkStatus = async () => {
-                        try {
-                            const statusResponse = await fetch('/status');
-                            if (!statusResponse.ok) {
-                                throw new Error('Failed to get status');
-                            }
-                            
-                            const status = await statusResponse.json();
-                            
-                            // Update progress
-                            progressBarFill.style.width = `${status.progress}%`;
-                            
-                            // Update messages
-                            if (status.messages && status.messages.length > 0) {
-                                statusMessages.innerHTML = status.messages
-                                    .map(msg => `<div>${msg}</div>`)
-                                    .join('');
-                                statusMessages.scrollTop = statusMessages.scrollHeight;
-                            }
-                            
-                            if (status.error) {
-                                throw new Error(status.error);
-                            }
-                            
-                            if (status.completed) {
-                                // Show success message
-                                completionMessage.textContent = `Folder ${selectedFolderPath} has been successfully organized!`;
-                                completionMessage.style.color = '#28a745';
-                                loader.style.display = 'none';
-                                completionMessage.style.display = 'block';
-                                
-                                // Reset UI
-                                organizeButton.disabled = false;
-                                organizeButton.textContent = 'Organize';
-                                folderInput.value = '';
-                                selectedFolderPath = '';
-                                selectedFolderDisplay.style.display = 'none';
-                            } else {
-                                // Continue polling
-                                setTimeout(checkStatus, 1000);
-                            }
-                        } catch (error) {
-                            console.error('Status check error:', error);
-                            loader.style.display = 'none';
-                            completionMessage.textContent = 'Error: ' + error.message;
-                            completionMessage.style.color = '#dc3545';
-                            completionMessage.style.display = 'block';
-                            organizeButton.disabled = false;
-                            organizeButton.textContent = 'Organize';
-                        }
-                    };
+                    pollStatus();
 
-                    await checkStatus();
-                    
                 } catch (error) {
                     console.error('Error:', error);
-                    loader.style.display = 'none';
-                    completionMessage.textContent = 'Error: ' + error.message;
-                    completionMessage.style.color = '#dc3545';
+                    uploadProgress.style.display = 'none';
+                    progressContainer.style.display = 'none';
+                    completionMessage.textContent = `Error: ${error.message}`;
+                    completionMessage.classList.add('error-message');
                     completionMessage.style.display = 'block';
+                    
                     organizeButton.disabled = false;
-                    organizeButton.textContent = 'Organize';
+                    organizeButton.textContent = 'Upload & Organize';
                 }
             });
+
+            async function pollStatus() {
+                try {
+                    const response = await fetch('/status');
+                    const status = await response.json();
+
+                    // Update progress
+                    progressFill.style.width = `${status.progress}%`;
+                    progressText.textContent = status.current_step || `Progress: ${status.progress}%`;
+
+                    // Update logs
+                    if (status.messages && status.messages.length > 0) {
+                        logContainer.style.display = 'block';
+                        logContainer.innerHTML = status.messages
+                            .slice(-10) // Show last 10 messages
+                            .map(msg => `<div>${msg}</div>`)
+                            .join('');
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    }
+
+                    if (status.completed) {
+                        progressContainer.style.display = 'none';
+                        
+                        if (status.error) {
+                            completionMessage.textContent = `Error: ${status.error}`;
+                            completionMessage.classList.add('error-message');
+                        } else {
+                            const folderName = selectedFiles[0].webkitRelativePath.split('/')[0];
+                            completionMessage.textContent = `Folder "${folderName}" has been successfully organized!`;
+                            completionMessage.classList.remove('error-message');
+                        }
+                        
+                        completionMessage.style.display = 'block';
+                        
+                        // Reset form
+                        organizeButton.disabled = false;
+                        organizeButton.textContent = 'Upload & Organize';
+                        folderInput.value = '';
+                        selectedFiles = [];
+                        selectedFolderDisplay.style.display = 'none';
+                        
+                    } else if (status.running) {
+                        // Continue polling
+                        setTimeout(pollStatus, 1000);
+                    }
+
+                } catch (error) {
+                    console.error('Error polling status:', error);
+                    setTimeout(pollStatus, 2000); // Retry after 2 seconds
+                }
+            }
         });
     </script>
 </body>
