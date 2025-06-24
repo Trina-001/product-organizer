@@ -150,6 +150,33 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        #progressBar {
+            width: 100%;
+            background-color: #3a3a3a;
+            border-radius: 5px;
+            margin: 10px 0;
+            display: none;
+        }
+
+        #progressBarFill {
+            height: 10px;
+            border-radius: 5px;
+            background-color: #007bff;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        #statusMessages {
+            max-height: 200px;
+            overflow-y: auto;
+            text-align: left;
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #3a3a3a;
+            border-radius: 5px;
+            display: none;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
@@ -171,6 +198,10 @@
         </form>
 
         <div class="loader" id="loader"></div>
+        <div id="progressBar">
+            <div id="progressBarFill"></div>
+        </div>
+        <div id="statusMessages"></div>
         <div id="completionMessage"></div>
     </div>
 
@@ -182,12 +213,14 @@
             const organizeButton = document.getElementById('organizeButton');
             const loader = document.getElementById('loader');
             const completionMessage = document.getElementById('completionMessage');
+            const progressBar = document.getElementById('progressBar');
+            const progressBarFill = document.getElementById('progressBarFill');
+            const statusMessages = document.getElementById('statusMessages');
 
             let selectedFolderPath = '';
 
             folderInput.addEventListener('change', function(event) {
                 if (event.target.files.length > 0) {
-                    // Get folder name from the path
                     const fullPath = event.target.files[0].webkitRelativePath;
                     selectedFolderPath = fullPath.split('/')[0];
                     
@@ -195,8 +228,9 @@
                     selectedFolderDisplay.style.display = 'block';
                     organizeButton.disabled = false;
                     
-                    // Hide completion message when selecting new folder
                     completionMessage.style.display = 'none';
+                    statusMessages.style.display = 'none';
+                    statusMessages.innerHTML = '';
                 }
             });
 
@@ -212,28 +246,83 @@
                 organizeButton.disabled = true;
                 organizeButton.textContent = 'Organizing...';
                 loader.style.display = 'block';
+                progressBar.style.display = 'block';
+                statusMessages.style.display = 'block';
                 completionMessage.style.display = 'none';
 
                 try {
-                    // Simulate processing
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                    
-                    // Show success message (single line, no quotes)
-                    completionMessage.textContent = `Folder ${selectedFolderPath} has been successfully organized!`;
-                    loader.style.display = 'none';
-                    completionMessage.style.display = 'block';
-                    
-                    // Reset UI (except keep success message)
-                    organizeButton.disabled = false;
-                    organizeButton.textContent = 'Organize';
-                    folderInput.value = '';
-                    selectedFolderPath = '';
-                    selectedFolderDisplay.style.display = 'none';
+                    // Start the organization process
+                    const response = await fetch('/organize', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: `folder_path=${encodeURIComponent(selectedFolderPath)}`
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('Failed to start organization');
+                    }
+
+                    // Poll for status updates
+                    const checkStatus = async () => {
+                        try {
+                            const statusResponse = await fetch('/status');
+                            if (!statusResponse.ok) {
+                                throw new Error('Failed to get status');
+                            }
+                            
+                            const status = await statusResponse.json();
+                            
+                            // Update progress
+                            progressBarFill.style.width = `${status.progress}%`;
+                            
+                            // Update messages
+                            if (status.messages && status.messages.length > 0) {
+                                statusMessages.innerHTML = status.messages
+                                    .map(msg => `<div>${msg}</div>`)
+                                    .join('');
+                                statusMessages.scrollTop = statusMessages.scrollHeight;
+                            }
+                            
+                            if (status.error) {
+                                throw new Error(status.error);
+                            }
+                            
+                            if (status.completed) {
+                                // Show success message
+                                completionMessage.textContent = `Folder ${selectedFolderPath} has been successfully organized!`;
+                                completionMessage.style.color = '#28a745';
+                                loader.style.display = 'none';
+                                completionMessage.style.display = 'block';
+                                
+                                // Reset UI
+                                organizeButton.disabled = false;
+                                organizeButton.textContent = 'Organize';
+                                folderInput.value = '';
+                                selectedFolderPath = '';
+                                selectedFolderDisplay.style.display = 'none';
+                            } else {
+                                // Continue polling
+                                setTimeout(checkStatus, 1000);
+                            }
+                        } catch (error) {
+                            console.error('Status check error:', error);
+                            loader.style.display = 'none';
+                            completionMessage.textContent = 'Error: ' + error.message;
+                            completionMessage.style.color = '#dc3545';
+                            completionMessage.style.display = 'block';
+                            organizeButton.disabled = false;
+                            organizeButton.textContent = 'Organize';
+                        }
+                    };
+
+                    await checkStatus();
                     
                 } catch (error) {
                     console.error('Error:', error);
                     loader.style.display = 'none';
-                    completionMessage.textContent = 'Error occurred!';
+                    completionMessage.textContent = 'Error: ' + error.message;
                     completionMessage.style.color = '#dc3545';
                     completionMessage.style.display = 'block';
                     organizeButton.disabled = false;
