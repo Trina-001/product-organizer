@@ -11,7 +11,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import script_org # Import your modified script
 
-app = Flask(__name__)
+# Initialize Flask app, specifying the current directory as the template folder
+app = Flask(__name__, template_folder='.')
 
 # Global variable to store organization status and messages
 # In a production environment, consider a more robust solution like a database
