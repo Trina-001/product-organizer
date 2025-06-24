@@ -91,4 +91,4 @@ def status():
     return jsonify(organization_status)
 
 if __name__ == '__main__':
-    app.run(debug=True) # Set debug=False for production
+    app.run(debug=False) # Set debug=False for production
